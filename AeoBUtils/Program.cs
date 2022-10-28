@@ -1,6 +1,5 @@
 ﻿using CommandLine;
 using System.Reflection;
-using System.Text.RegularExpressions;
 
 namespace AeoBUtils
 {
@@ -24,248 +23,28 @@ namespace AeoBUtils
         public string? output { get; set; }
     }
 
+    [Verb("axb2axbsl", HelpText = "Convert AxB to AxBsl")]
+    public class AxB2AxBslOptions
+    {
+        [Option('p', "path", HelpText = "Path to AxB", Required = true)]
+        public string? path { get; set; }
+
+        [Option('o', "output", HelpText = "Path to output AxBsl", Required = true)]
+        public string? output { get; set; }
+    }
+
+    [Verb("axbsl2axb", HelpText = "Convert AxBsl AxB")]
+    public class AxBsl2AxBOptions
+    {
+        [Option('p', "path", HelpText = "Path to AxBsl", Required = true)]
+        public string? path { get; set; }
+
+        [Option('o', "output", HelpText = "Path to output AxB", Required = true)]
+        public string? output { get; set; }
+    }
+
     internal class Program
     {
-        public const uint ACPI_EVAL_OUTPUT_BUFFER_SIGNATURE_V1 = 0x426F6541; // 'AeoB'
-        public const ushort ACPI_METHOD_ARGUMENT_INTEGER = 0x0;
-        public const ushort ACPI_METHOD_ARGUMENT_STRING = 0x1;
-        public const ushort ACPI_METHOD_ARGUMENT_BUFFER = 0x2;
-        public const ushort ACPI_METHOD_ARGUMENT_PACKAGE = 0x3;
-        public const ushort ACPI_METHOD_ARGUMENT_PACKAGE_EX = 0x4;
-
-        private static int nestedLevel = 0;
-
-        private static string getNestedPadding()
-        {
-            return new string(' ', nestedLevel * 4);
-        }
-
-        private static string ParsePackage(BinaryReader br)
-        {
-            string output = "";
-            ushort type = br.ReadUInt16();
-            ushort dataLength = br.ReadUInt16();
-
-            switch (type)
-            {
-                case ACPI_METHOD_ARGUMENT_INTEGER:
-                    {
-                        switch (dataLength)
-                        {
-                            case 2:
-                                {
-                                    ushort argInt = br.ReadUInt16();
-                                    output += getNestedPadding() + $"0x{argInt:X4}," + "\n";
-                                    break;
-                                }
-                            case 4:
-                                {
-                                    uint argInt = br.ReadUInt32();
-                                    output += getNestedPadding() + $"0x{argInt:X8}," + "\n";
-                                    break;
-                                }
-                            case 8:
-                                {
-                                    ulong argInt = br.ReadUInt64();
-                                    output += getNestedPadding() + $"0x{argInt:X16}," + "\n";
-                                    break;
-                                }
-                            default:
-                                {
-                                    throw new Exception("Unknown integer length! " + dataLength);
-                                }
-                        }
-                        break;
-                    }
-                case ACPI_METHOD_ARGUMENT_STRING:
-                    {
-                        byte[] argStringBuff = br.ReadBytes(dataLength - 1);
-                        _ = br.ReadByte(); // Terminator
-                        string argString = System.Text.Encoding.ASCII.GetString(argStringBuff);
-                        output += getNestedPadding() + "\"" + argString + "\"," + "\n";
-                        break;
-                    }
-                case ACPI_METHOD_ARGUMENT_BUFFER:
-                    {
-                        byte[] argBuffer = br.ReadBytes(dataLength);
-                        output += getNestedPadding() + $"Buffer (0x{dataLength:X4})";
-                        output += " { ";
-                        output += BitConverter.ToString(argBuffer).Replace("-", ", 0x");
-                        output += " }" + "\n";
-                        break;
-                    }
-                case ACPI_METHOD_ARGUMENT_PACKAGE:
-                    {
-                        long maxOffset = br.BaseStream.Position + dataLength;
-
-                        output += getNestedPadding() + $"Package (0x{dataLength:X4})" + "\n";
-                        output += getNestedPadding() + "{" + "\n";
-                        nestedLevel++;
-                        while (br.BaseStream.Position < maxOffset)
-                        {
-                            output += ParsePackage(br);
-                        }
-                        if (br.BaseStream.Position != maxOffset)
-                        {
-                            throw new Exception("Overflow!");
-                        }
-                        nestedLevel--;
-                        output += getNestedPadding() + "}," + "\n";
-                        break;
-                    }
-                case ACPI_METHOD_ARGUMENT_PACKAGE_EX:
-                    {
-                        throw new Exception("Not implemented!");
-                    }
-                default:
-                    {
-                        throw new Exception("Unknown type! " + type);
-                    }
-            }
-
-            return output;
-        }
-
-        private static string ParseAeoBFile(string file)
-        {
-            string finalOutput = "";
-            using BinaryReader br = new(File.OpenRead(file));
-            uint sig = br.ReadUInt32();
-            if (sig != ACPI_EVAL_OUTPUT_BUFFER_SIGNATURE_V1)
-            {
-                throw new Exception("Invalid signature! " + sig);
-            }
-
-            uint length = br.ReadUInt32();
-            uint count = br.ReadUInt32();
-
-            for (int i = 0; i < count; i++)
-            {
-                finalOutput += ParsePackage(br);
-            }
-
-            return finalOutput;
-        }
-
-        public static byte[] StringToByteArrayFastest(string hex)
-        {
-            if (hex.Length % 2 == 1)
-            {
-                throw new Exception("The binary key cannot have an odd number of digits");
-            }
-
-            byte[] arr = new byte[hex.Length >> 1];
-
-            for (int i = 0; i < hex.Length >> 1; ++i)
-            {
-                arr[i] = (byte)((GetHexVal(hex[i << 1]) << 4) + GetHexVal(hex[(i << 1) + 1]));
-            }
-
-            return arr;
-        }
-
-        public static int GetHexVal(char hex)
-        {
-            int val = hex;
-            //For uppercase A-F letters:
-            //return val - (val < 58 ? 48 : 55);
-            //For lowercase a-f letters:
-            //return val - (val < 58 ? 48 : 87);
-            //Or the two combined, but a bit slower:
-            return val - (val < 58 ? 48 : (val < 97 ? 55 : 87));
-        }
-
-        private static string RemoveComments(string input)
-        {
-            return Regex.Replace(input, "/\"((?:\\\\\"|[^\"])*)\"|'((?:\\\\'|[^'])*)'|(\\/\\/.*|\\/\\*[\\s\\S]*?\\*\\/)/g", m =>
-            {
-                return string.Join("",
-                    m.Groups.OfType<Group>().Select((g, i) =>
-                    {
-                        Console.WriteLine(g.Value);
-                        Console.WriteLine(i);
-                        switch (i)
-                        {
-                            case 2:
-                                return "";
-                            default:
-                                return g.Value;
-                        }
-                    }));
-            });
-        }
-
-        private static void BuildAeoBFile(string finalOutput, string file)
-        {
-            string input = RemoveComments(finalOutput);
-
-            using BinaryWriter bw = new(File.OpenWrite(file));
-            string[] lines = input.Split("\n").ToArray();
-            bw.Write(ACPI_EVAL_OUTPUT_BUFFER_SIGNATURE_V1);
-            long lengthPos = bw.BaseStream.Position;
-            bw.Write((uint)0);
-            int count = lines.Where(x => x.StartsWith("Package (0x")).Count();
-            bw.Write((uint)count);
-
-            foreach (string? unsanitizedline in lines)
-            {
-                string line = unsanitizedline.TrimStart().TrimEnd().TrimEnd(',');
-
-                if (line.Contains("}") || line.Contains("{"))
-                {
-                    continue;
-                }
-
-                if (line.StartsWith("Package (0x"))
-                {
-                    bw.Write(ACPI_METHOD_ARGUMENT_PACKAGE);
-
-                    string lengthStr = line.Split("x").Last().Replace(")", "");
-                    byte[] hex = StringToByteArrayFastest(lengthStr).Reverse().ToArray();
-                    ushort dataLength = BitConverter.ToUInt16(hex);
-                    bw.Write(dataLength);
-                }
-
-                if (line.StartsWith("\""))
-                {
-                    bw.Write(ACPI_METHOD_ARGUMENT_STRING);
-                    string strval = line.Split("\"")[1];
-                    int dataLength = strval.Length + 1;
-
-                    bw.Write((ushort)dataLength);
-                    bw.Write(System.Text.Encoding.ASCII.GetBytes(strval));
-                    bw.Write('\0');
-                }
-
-                if (line.TrimStart().StartsWith("0x"))
-                {
-                    bw.Write(ACPI_METHOD_ARGUMENT_INTEGER);
-                    string strval = line.Split("0x")[1];
-                    byte[] hex = StringToByteArrayFastest(strval).Reverse().ToArray();
-                    int dataLength = strval.Length / 2;
-                    bw.Write((ushort)dataLength);
-                    bw.Write(hex);
-                }
-
-                if (line.TrimStart().StartsWith("Buffer (0x"))
-                {
-                    bw.Write(ACPI_METHOD_ARGUMENT_BUFFER);
-
-                    string lengthStr = line.Split("(").Last().Split(")").First().Replace("0x", "");
-                    byte[] hex = StringToByteArrayFastest(lengthStr).Reverse().ToArray();
-                    ushort dataLength = BitConverter.ToUInt16(hex);
-                    bw.Write(dataLength);
-
-                    string hexStr = line.Split("{ ").Last().Replace(" }", "").Replace(", 0x", "");
-                    byte[] hex2 = StringToByteArrayFastest(lengthStr);
-                    bw.Write(hex2);
-                }
-            }
-
-            _ = bw.BaseStream.Seek(lengthPos, SeekOrigin.Begin);
-            bw.Write((uint)bw.BaseStream.Length);
-        }
-
         private static void PrintLogo()
         {
             Console.WriteLine($"AeoB/AeoBsl Converter {Assembly.GetExecutingAssembly().GetName().Version}");
@@ -279,14 +58,15 @@ namespace AeoBUtils
 
         private static int Main(string[] args)
         {
-            return Parser.Default.ParseArguments<AeoB2AeoBslOptions, AeoBsl2AeoBOptions>(args).MapResult(
+            return Parser.Default.ParseArguments<AeoB2AeoBslOptions, AeoBsl2AeoBOptions, AxB2AxBslOptions, AxBsl2AxBOptions>(args).MapResult(
               (AeoB2AeoBslOptions arg) =>
               {
                   PrintLogo();
 
                   if (File.Exists(arg.path))
                   {
-                      File.WriteAllText(arg.output, ParseAeoBFile(arg.path));
+                      using FileStream file = File.OpenRead(arg.path);
+                      File.WriteAllText(arg.output, AeoBParser.ParseAeoBFile(file));
                   }
 
                   return 0;
@@ -297,7 +77,32 @@ namespace AeoBUtils
 
                   if (File.Exists(arg.path))
                   {
-                      BuildAeoBFile(File.ReadAllText(arg.path), arg.output);
+                      using FileStream file = File.OpenWrite(arg.output);
+                      AeoBBuilder.BuildAeoBFile(File.ReadAllText(arg.path), file);
+                  }
+
+                  return 0;
+              },
+              (AxB2AxBslOptions arg) =>
+              {
+                  PrintLogo();
+
+                  if (File.Exists(arg.path))
+                  {
+                      using FileStream file = File.OpenRead(arg.path);
+                      File.WriteAllText(arg.output, AdrenoParser.ParseAdrenoFile(file));
+                  }
+
+                  return 0;
+              },
+              (AxBsl2AxBOptions arg) =>
+              {
+                  PrintLogo();
+
+                  if (File.Exists(arg.path))
+                  {
+                      using FileStream file = File.OpenWrite(arg.output);
+                      AdrenoBuilder.BuildAdrenoFile(File.ReadAllText(arg.path), file);
                   }
 
                   return 0;
