@@ -41,13 +41,14 @@ namespace AeoBUtils
             {
                 uint start = (uint)bw.BaseStream.Position - (uint)ogpos;
 
-                string tmp = Path.GetRandomFileName();
+                string tmp = Path.GetTempFileName();
                 using (FileStream filestrm = File.OpenWrite(tmp))
                 {
                     AeoBBuilder.BuildAeoBFile(method.AeoBsl, filestrm);
                 }
 
                 byte[] buffer = File.ReadAllBytes(tmp);
+                File.Delete(tmp);
                 uint length = (uint)buffer.Length;
 
                 bw.Write(buffer);

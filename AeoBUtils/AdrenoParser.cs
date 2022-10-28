@@ -59,7 +59,7 @@ namespace AeoBUtils
                 _ = br.BaseStream.Seek(startOffset, SeekOrigin.Begin);
                 byte[] methodBuff = br.ReadBytes((int)length);
 
-                string tmp = Path.GetRandomFileName();
+                string tmp = Path.GetTempFileName();
                 File.WriteAllBytes(tmp, methodBuff);
                 using FileStream filestrm = File.OpenRead(tmp);
 
@@ -70,6 +70,7 @@ namespace AeoBUtils
                     Name = methodName,
                     AeoBsl = AeoBParser.ParseAeoBFile(filestrm)
                 });
+                File.Delete(tmp);
             }
 
             adrenoBasePackage.adrenoMethodPackages = adrenoMethodPackages.ToArray();

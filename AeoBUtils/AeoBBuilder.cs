@@ -82,6 +82,13 @@ namespace AeoBUtils
                     byte[] hex = StringToByteArrayFastest(lengthStr).Reverse().ToArray();
                     ushort dataLength = BitConverter.ToUInt16(hex);
                     bw.Write(dataLength);
+                    if (dataLength < 4)
+                    {
+                        for (int i = 0; i < 4 - dataLength; i++)
+                        {
+                            bw.Write('\0');
+                        }
+                    }
                 }
 
                 if (line.StartsWith("\""))
@@ -110,6 +117,13 @@ namespace AeoBUtils
                     int dataLength = strval.Length / 2;
                     bw.Write((ushort)dataLength);
                     bw.Write(hex);
+                    if (dataLength < 4)
+                    {
+                        for (int i = 0; i < 4 - dataLength; i++)
+                        {
+                            bw.Write('\0');
+                        }
+                    }
                 }
 
                 if (line.StartsWith("Buffer (0x"))
@@ -124,6 +138,13 @@ namespace AeoBUtils
                     string hexStr = line.Split("{ ").Last().Replace(" }", "").Replace(", 0x", "").Replace("0x", "");
                     byte[] hex2 = StringToByteArrayFastest(hexStr);
                     bw.Write(hex2);
+                    if (dataLength < 4)
+                    {
+                        for (int i = 0; i < 4 - dataLength; i++)
+                        {
+                            bw.Write('\0');
+                        }
+                    }
                 }
             }
 
