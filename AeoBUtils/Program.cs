@@ -1,5 +1,6 @@
 ﻿using CommandLine;
 using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace AeoBUtils
 {
@@ -174,10 +175,32 @@ namespace AeoBUtils
             return val - (val < 58 ? 48 : (val < 97 ? 55 : 87));
         }
 
+        private static string RemoveComments(string input)
+        {
+            return Regex.Replace(input, "/\"((?:\\\\\"|[^\"])*)\"|'((?:\\\\'|[^'])*)'|(\\/\\/.*|\\/\\*[\\s\\S]*?\\*\\/)/g", m =>
+            {
+                return string.Join("",
+                    m.Groups.OfType<Group>().Select((g, i) =>
+                    {
+                        Console.WriteLine(g.Value);
+                        Console.WriteLine(i);
+                        switch (i)
+                        {
+                            case 2:
+                                return "";
+                            default:
+                                return g.Value;
+                        }
+                    }));
+            });
+        }
+
         private static void BuildAeoBFile(string finalOutput, string file)
         {
+            string input = RemoveComments(finalOutput);
+
             using BinaryWriter bw = new(File.OpenWrite(file));
-            string[] lines = finalOutput.Split("\n").ToArray();
+            string[] lines = input.Split("\n").ToArray();
             bw.Write(ACPI_EVAL_OUTPUT_BUFFER_SIGNATURE_V1);
             long lengthPos = bw.BaseStream.Position;
             bw.Write((uint)0);
