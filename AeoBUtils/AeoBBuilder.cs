@@ -47,8 +47,6 @@ namespace AeoBUtils
                 return string.Join("",
                     m.Groups.OfType<Group>().Select((g, i) =>
                     {
-                        Console.WriteLine(g.Value);
-                        Console.WriteLine(i);
                         return i switch
                         {
                             2 => "",
@@ -58,30 +56,62 @@ namespace AeoBUtils
             });
         }
 
-        public static void BuildAeoBFile(string finalOutput, Stream file)
+        private static (int start, int end) GetSubBlock(string[] lines, int curpos)
         {
-            string input = RemoveComments(finalOutput);
-
-            using BinaryWriter bw = new(file, Encoding.Default, true);
-            string[] lines = input.Split("\n").ToArray();
-            bw.Write(ACPI_EVAL_OUTPUT_BUFFER_SIGNATURE_V1);
-            long lengthPos = bw.BaseStream.Position;
-            bw.Write((uint)0);
-            int count = lines.Where(x => x.TrimStart() == x && !x.Contains("{") && !x.Contains("}") && x != "").Count();
-            bw.Write((uint)count);
-
-            foreach (string? unsanitizedline in lines)
+            int depth = 0;
+            int start = curpos + 1;
+            int end = start;
+            for (; end < lines.Length; end++)
             {
+                if (lines[end].Contains("{"))
+                {
+                    depth++;
+                }
+
+                if (lines[end].Contains("}"))
+                {
+                    depth--;
+                }
+
+                if (depth == 0)
+                {
+                    start++;
+                    break;
+                }
+            }
+
+            return (start, end);
+        }
+
+        private static void ParseLines(string[] lines, BinaryWriter bw)
+        {
+            for (int j = 0; j < lines.Length; j++)
+            {
+                string? unsanitizedline = lines[j];
                 string line = unsanitizedline.TrimStart().TrimEnd().TrimEnd(',');
 
-                if (line.StartsWith("Package (0x"))
+                if (line.StartsWith("Package ("))
                 {
                     bw.Write(ACPI_METHOD_ARGUMENT_PACKAGE);
 
-                    string lengthStr = line.Split("x").Last().Replace(")", "");
-                    byte[] hex = StringToByteArrayFastest(lengthStr).Reverse().ToArray();
-                    ushort dataLength = BitConverter.ToUInt16(hex);
+                    ushort packageLengthPos = (ushort)bw.BaseStream.Length;
+                    bw.Write((ushort)0); // Placeholder
+
+                    ushort oldlength = (ushort)bw.BaseStream.Length;
+
+                    // Compute where we end
+                    (int start, int end) = GetSubBlock(lines, j);
+
+                    ParseLines(lines[start..end], bw);
+
+                    ushort newlength = (ushort)bw.BaseStream.Length;
+                    ushort dataLength = (ushort)(newlength - oldlength);
+
+                    // Write correct length
+                    _ = bw.BaseStream.Seek(packageLengthPos, SeekOrigin.Begin);
                     bw.Write(dataLength);
+                    _ = bw.BaseStream.Seek(newlength, SeekOrigin.Begin);
+
                     if (dataLength < 4)
                     {
                         for (int i = 0; i < 4 - dataLength; i++)
@@ -89,9 +119,10 @@ namespace AeoBUtils
                             bw.Write('\0');
                         }
                     }
-                }
 
-                if (line.StartsWith("\""))
+                    j = end;
+                }
+                else if (line.StartsWith("\""))
                 {
                     bw.Write(ACPI_METHOD_ARGUMENT_STRING);
                     string strval = line.Split("\"")[1];
@@ -108,8 +139,7 @@ namespace AeoBUtils
                         }
                     }
                 }
-
-                if (line.StartsWith("0x"))
+                else if (line.StartsWith("0x"))
                 {
                     bw.Write(ACPI_METHOD_ARGUMENT_INTEGER);
                     string strval = line.Split("0x")[1];
@@ -125,8 +155,7 @@ namespace AeoBUtils
                         }
                     }
                 }
-
-                if (line.StartsWith("Buffer (0x"))
+                else if (line.StartsWith("Buffer (0x"))
                 {
                     bw.Write(ACPI_METHOD_ARGUMENT_BUFFER);
 
@@ -147,6 +176,21 @@ namespace AeoBUtils
                     }
                 }
             }
+        }
+
+        public static void BuildAeoBFile(string finalOutput, Stream file)
+        {
+            string input = RemoveComments(finalOutput);
+
+            using BinaryWriter bw = new(file, Encoding.Default, true);
+            string[] lines = input.Split("\n").ToArray();
+            bw.Write(ACPI_EVAL_OUTPUT_BUFFER_SIGNATURE_V1);
+            long lengthPos = bw.BaseStream.Position;
+            bw.Write((uint)0);
+            int count = lines.Where(x => x.TrimStart() == x && !x.Contains("{") && !x.Contains("}") && x != "").Count();
+            bw.Write((uint)count);
+
+            ParseLines(lines, bw);
 
             _ = bw.BaseStream.Seek(lengthPos, SeekOrigin.Begin);
             bw.Write((uint)bw.BaseStream.Length);

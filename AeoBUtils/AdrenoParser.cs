@@ -33,7 +33,7 @@ namespace AeoBUtils
             uint binaryNameLength = br.ReadUInt32();
 
             byte[] binaryNameBuff = br.ReadBytes((int)binaryNameLength);
-            string binaryName = Encoding.ASCII.GetString(binaryNameBuff);
+            string binaryName = Encoding.ASCII.GetString(binaryNameBuff).Replace("\0", "");
 
             AdrenoBasePackage adrenoBasePackage = new()
             {

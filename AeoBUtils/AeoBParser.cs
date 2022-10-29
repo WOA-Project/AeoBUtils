@@ -76,7 +76,7 @@ namespace AeoBUtils
                     {
                         long maxOffset = br.BaseStream.Position + dataLength;
 
-                        output += getNestedPadding() + $"Package (0x{dataLength:X4})" + "\n";
+                        output += getNestedPadding() + $"Package ()" + "\n";
                         output += getNestedPadding() + "{" + "\n";
                         nestedLevel++;
                         while (br.BaseStream.Position < maxOffset)
